@@ -121,7 +121,7 @@ const EN = {
 type Key = keyof typeof EN;
 
 const AR: Record<Key, string> = {
-  appName: "ساحل",
+  appName: "سَهل",
   langToggle: "English",
 
   review: "مراجعة",
