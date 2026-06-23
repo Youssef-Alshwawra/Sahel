@@ -12,13 +12,18 @@
   --foreground: #e4e4e7; /* zinc-200 */
   --muted: #a1a1aa; /* zinc-400 */
   --accent: #818cf8; /* indigo-400 */
+  --font-ui: var(--font-english);
+}
+
+html[lang="ar"] {
+  --font-ui: var(--font-arabic);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --font-sans: var(--font-ui);
   --font-mono: var(--font-geist-mono);
 }
 
@@ -29,7 +34,7 @@ html {
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-sans), var(--font-arabic), system-ui, sans-serif;
+  font-family: var(--font-ui), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 

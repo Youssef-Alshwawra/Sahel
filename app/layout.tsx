@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Noto_Sans_Arabic } from "next/font/google";
+import { Geist_Mono, IBM_Plex_Sans_Arabic, Manrope } from "next/font/google";
 import Providers from "./providers";
 import SiteHeader from "@/components/SiteHeader";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+const manrope = Manrope({
+  variable: "--font-english",
   subsets: ["latin"],
 });
 
@@ -14,8 +14,9 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const notoArabic = Noto_Sans_Arabic({
+const ibmPlexArabic = IBM_Plex_Sans_Arabic({
   variable: "--font-arabic",
+  weight: ["400", "500", "600", "700"],
   subsets: ["arabic"],
 });
 
@@ -36,7 +37,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} ${notoArabic.variable} h-full antialiased`}
+      className={`${manrope.variable} ${geistMono.variable} ${ibmPlexArabic.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         <script dangerouslySetInnerHTML={{ __html: dirScript }} />
