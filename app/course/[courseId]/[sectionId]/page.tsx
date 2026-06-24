@@ -7,6 +7,7 @@ import { ArrowRight, BrainCircuit, PartyPopper } from "lucide-react";
 import type { Block, Course, Section } from "@/lib/types";
 import { isReviewable } from "@/lib/types";
 import {
+  appendReviewLog,
   getCourse,
   getReviewItem,
   markSectionComplete,
@@ -96,8 +97,18 @@ export default function LearnPage() {
         type: block.type,
       });
 
+    // Record every graded answer so stats, streaks and focus insights work.
+    await appendReviewLog({
+      at: new Date().toISOString(),
+      courseId,
+      type: block.type,
+      focus: "focus" in block ? block.focus : undefined,
+      grade: outcome.grade,
+      correct: outcome.correct,
+    });
+
     if (outcome.grade) {
-      // flashcard / written self-rating → schedule via SM-2.
+      // flashcard / written self-rating → schedule via FSRS.
       await upsertReviewItem(schedule(base, outcome.grade));
       notifyDueChanged();
     } else if (outcome.correct === false) {

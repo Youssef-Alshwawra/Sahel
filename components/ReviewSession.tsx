@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckCircle2, Loader2 } from "lucide-react";
-import type { Block, Course, ReviewItem } from "@/lib/types";
-import { getCourses, getDueItems, upsertReviewItem } from "@/lib/db";
-import { schedule } from "@/lib/srs";
+import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import type { Block, Course, Focus, ReviewItem } from "@/lib/types";
+import { appendReviewLog, getCourses, getDueItems, upsertReviewItem } from "@/lib/db";
+import { isLeech, schedule } from "@/lib/srs";
 import { findBlock, shuffle } from "@/lib/course-utils";
 import { notifyDueChanged } from "@/lib/events";
 import { pick, useLang } from "@/lib/i18n";
@@ -15,7 +15,17 @@ import type { CardOutcome } from "./card-shared";
 
 type QueueEntry = { item: ReviewItem; block: Block; course: Course };
 
-export default function ReviewSession({ courseId }: { courseId?: string }) {
+function blockFocus(block: Block): Focus | undefined {
+  return "focus" in block ? block.focus : undefined;
+}
+
+export default function ReviewSession({
+  courseId,
+  focus,
+}: {
+  courseId?: string;
+  focus?: Focus;
+}) {
   const { t, lang, dir } = useLang();
   const [loading, setLoading] = useState(true);
   const [queue, setQueue] = useState<QueueEntry[]>([]);
@@ -34,11 +44,12 @@ export default function ReviewSession({ courseId }: { courseId?: string }) {
       if (!course) continue;
       const found = findBlock(course, item.id);
       if (!found) continue;
+      if (focus && blockFocus(found.block) !== focus) continue;
       entries.push({ item, block: found.block, course });
     }
     setQueue(shuffle(entries));
     setLoading(false);
-  }, [courseId]);
+  }, [courseId, focus]);
 
   useEffect(() => {
     load();
@@ -53,6 +64,14 @@ export default function ReviewSession({ courseId }: { courseId?: string }) {
     const grade = outcome.grade ?? "good";
     const updated = schedule(current.item, grade);
     await upsertReviewItem(updated);
+    await appendReviewLog({
+      at: new Date().toISOString(),
+      courseId: current.item.courseId,
+      type: current.item.type,
+      focus: blockFocus(current.block),
+      grade,
+      correct: outcome.correct,
+    });
     notifyDueChanged();
 
     setStats((s) => ({
@@ -149,6 +168,13 @@ export default function ReviewSession({ courseId }: { courseId?: string }) {
         </div>
         <ProgressBar value={(pos / queue.length) * 100} />
       </div>
+
+      {isLeech(current.item) && (
+        <div className="mb-3 flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+          <AlertTriangle className="h-4 w-4 flex-none" />
+          {t("leechHint")}
+        </div>
+      )}
 
       <div
         dir={dir}

@@ -5,10 +5,17 @@ import { useSearchParams } from "next/navigation";
 import { useLang } from "@/lib/i18n";
 import ReviewSession from "@/components/ReviewSession";
 
+const FOCUSES = ["why", "how", "when", "what", "syntax"] as const;
+type Focus = (typeof FOCUSES)[number];
+
 function ReviewInner() {
   const searchParams = useSearchParams();
   const course = searchParams.get("course") ?? undefined;
-  return <ReviewSession courseId={course} />;
+  const focusParam = searchParams.get("focus");
+  const focus = FOCUSES.includes(focusParam as Focus)
+    ? (focusParam as Focus)
+    : undefined;
+  return <ReviewSession courseId={course} focus={focus} />;
 }
 
 export default function ReviewPage() {

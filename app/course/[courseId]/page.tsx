@@ -8,6 +8,7 @@ import {
   BrainCircuit,
   CheckCircle2,
   Download,
+  Plus,
   Trash2,
 } from "lucide-react";
 import type { Course, ProgressEntry } from "@/lib/types";
@@ -20,6 +21,7 @@ import {
 import { notifyDueChanged } from "@/lib/events";
 import { pick, pickArr, useLang } from "@/lib/i18n";
 import ProgressBar from "@/components/ProgressBar";
+import ImportSectionDialog from "@/components/ImportSectionDialog";
 
 export default function CoursePage() {
   const { courseId } = useParams<{ courseId: string }>();
@@ -28,6 +30,8 @@ export default function CoursePage() {
   const [course, setCourse] = useState<Course | null>(null);
   const [progress, setProgress] = useState<ProgressEntry | undefined>();
   const [loading, setLoading] = useState(true);
+  const [showImport, setShowImport] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -37,6 +41,11 @@ export default function CoursePage() {
       setLoading(false);
     })();
   }, [courseId]);
+
+  function showToast(message: string) {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  }
 
   function exportJson() {
     if (!course) return;
@@ -109,7 +118,14 @@ export default function CoursePage() {
             <p className="mt-2 max-w-2xl text-zinc-400">{description}</p>
           )}
         </div>
-        <div className="flex flex-none gap-2">
+        <div className="flex flex-none flex-wrap gap-2">
+          <button
+            onClick={() => setShowImport(true)}
+            className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"
+          >
+            <Plus className="h-4 w-4" />
+            {t("importSection")}
+          </button>
           <button
             onClick={exportJson}
             className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"
@@ -196,6 +212,26 @@ export default function CoursePage() {
           );
         })}
       </ol>
+
+      {showImport && (
+        <ImportSectionDialog
+          courseId={course.id}
+          courseTitle={title}
+          onClose={() => setShowImport(false)}
+          onImported={({ added, replaced }) => {
+            setShowImport(false);
+            getCourse(courseId).then((c) => setCourse(c ?? null));
+            notifyDueChanged();
+            showToast(t("sectionsMerged", { added, replaced }));
+          }}
+        />
+      )}
+
+      {toast && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg border border-emerald-500/40 bg-emerald-500/15 px-4 py-2.5 text-sm font-medium text-emerald-200 shadow-lg">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

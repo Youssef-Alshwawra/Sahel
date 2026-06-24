@@ -6,6 +6,11 @@ memorize syntax, and review weak items via spaced repetition.
 
 - **No backend.** All data lives in the browser (IndexedDB).
 - **Content is JSON**, validated with `zod` on import.
+- **FSRS-6 spaced repetition** (via `ts-fsrs`) — fewer reviews for the same recall.
+- **Stats dashboard**: streak, daily goal, due forecast, recall rate, per-focus
+  strengths, and "sticking points" (leeches) you keep forgetting.
+- **Installable PWA**, offline-capable, with optional local review reminders.
+- **Backup & restore** the whole database as one JSON file.
 - **Dark mode**, mobile responsive, **RTL + LTR**.
 - **Bilingual (EN/AR).** A single language toggle in the header flips the whole UI
   **and** the course content between English and Arabic (default English, remembered).
@@ -37,10 +42,12 @@ npm start        # serve the production build
 | `lib/schema.ts` | Authoritative `zod` schema + `parseCourse()`; TS types are inferred from it. |
 | `lib/types.ts` | Shared types (`ReviewItem`, `ProgressEntry`, block helpers). |
 | `lib/db.ts` | IndexedDB wrappers (`idb-keyval`): courses, progress, review items. |
-| `lib/srs.ts` | Dependency-free SM-2 scheduler. Swap in `ts-fsrs` later if wanted. |
+| `lib/srs.ts` | FSRS-6 scheduler (`ts-fsrs`) behind a small `schedule()`/`newReviewItem()` wrapper; migrates pre-FSRS items. |
+| `lib/insights.ts` | Pure stat helpers: streak, recall rate, focus breakdown, due forecast, leeches. |
+| `lib/notify.ts` | Free, server-less local review reminders (Notifications API). |
 | `lib/sample.ts` | Sample course for the "Load sample" button. |
 | `components/` | Cards, renderers (`Markdown`, `MermaidDiagram`, `CodeBlock`), dialogs. |
-| `app/` | The four routes: `/`, `/course/[courseId]`, `/course/[courseId]/[sectionId]`, `/review`. |
+| `app/` | Routes: `/`, `/course/[courseId]`, `/course/[courseId]/[sectionId]`, `/review`, `/stats`, `/settings`. Plus `manifest.ts` (PWA) and `public/sw.js` (offline + notifications). |
 
 The course JSON shape and the content-generation prompt live in `project-prompt.md`
 (git-ignored, personal).

@@ -105,6 +105,13 @@ const EN = {
   importedToast: "Imported “{title}”.",
   updatedToast: "Updated “{title}”.",
 
+  importSection: "Import section",
+  importSectionDesc:
+    "Paste a section JSON (or an array of sections) to add to “{title}”. A section whose id already exists is replaced. Validated before saving.",
+  noSectionFound: "No section found in that JSON.",
+  dupBlockIds: "Duplicate block ids (must be unique within a course): {ids}",
+  sectionsMerged: "Added {added}, updated {replaced} section(s).",
+
   loadingReview: "Loading review…",
   allCaughtUp: "All caught up",
   allCaughtUpBody:
@@ -116,6 +123,67 @@ const EN = {
   done: "Done",
   cardXofY: "Card {n} of {total}",
   reviewSubtitle: "Spaced repetition across everything that’s due.",
+
+  // Stats
+  statsTitle: "Stats",
+  statsSubtitle: "Your retention, streak, and where to focus next.",
+  statsEmpty:
+    "No review data yet. Learn a section and your stats will appear here.",
+  streak: "Streak",
+  days: "days",
+  todayGoal: "Today",
+  dueNow: "Due now",
+  recallRate: "Recall rate",
+  last100: "last 100 reviews",
+  forecast7: "Due in the next 7 days",
+  byFocus: "By focus area",
+  byFocusHint: "Lower bars are weaker — drill those to level up faster.",
+  drill: "Drill",
+  activity14: "Activity (14 days)",
+  leeches: "Sticking points",
+  leechesHint:
+    "Items you keep forgetting. Consider rephrasing them in the course JSON.",
+  lapsesN: "{n} lapses",
+  leechHint: "You’ve missed this several times — slow down and really nail it.",
+
+  // Written
+  yourAnswer: "Your answer",
+
+  // Reminders
+  remindTitle: "Time to review",
+  remindBody: "You have {n} items due in Sahel.",
+
+  // Settings
+  settingsTitle: "Settings",
+  settingsSubtitle:
+    "Goals, reminders, and your data — all stored on this device.",
+  dailyGoal: "Daily goal",
+  dailyGoalHint: "How many reviews you aim to do each day.",
+  cardsPerDay: "cards / day",
+  reminders: "Review reminders",
+  remindersHint:
+    "Get a local notification when reviews are due (while the app is open).",
+  notifDenied: "Notifications permission was not granted.",
+  notifUnsupported: "This browser doesn’t support notifications.",
+  notifBlocked: "Notifications are blocked in your browser settings.",
+  installApp: "Install app",
+  installHint:
+    "Add Sahel to your home screen for an app-like, offline experience.",
+  backupTitle: "Backup & restore",
+  backupHint:
+    "Your courses and progress live only in this browser. Export a backup to keep them safe.",
+  backupDownload: "Download backup",
+  backupRestore: "Restore from file",
+  restoreOk: "Backup restored.",
+  restoreFail: "Couldn’t read that backup file.",
+  restoreReplaceConfirm:
+    "Replace ALL current data with this backup? Click Cancel to merge instead.",
+  dangerZone: "Danger zone",
+  resetHint:
+    "Permanently delete all courses, progress, and review history on this device.",
+  resetAll: "Reset everything",
+  resetConfirm: "Delete ALL local data? This cannot be undone.",
+  resetOk: "All data cleared.",
 } as const;
 
 type Key = keyof typeof EN;
@@ -207,6 +275,13 @@ const AR: Record<Key, string> = {
   importedToast: "تم استيراد «{title}».",
   updatedToast: "تم تحديث «{title}».",
 
+  importSection: "استيراد قسم",
+  importSectionDesc:
+    "الصق قسم JSON (أو مصفوفة أقسام) لإضافته إلى «{title}». القسم الذي يحمل مُعرّفاً موجوداً مسبقاً سيُستبدل. يُتحقّق منه قبل الحفظ.",
+  noSectionFound: "لم يُعثر على قسم في هذا الـ JSON.",
+  dupBlockIds: "معرّفات كتل مكرّرة (يجب أن تكون فريدة داخل الكورس): {ids}",
+  sectionsMerged: "أُضيف {added}، وحُدّث {replaced} قسماً.",
+
   loadingReview: "جارٍ تحميل المراجعة…",
   allCaughtUp: "كل شيء مُنجز",
   allCaughtUpBody: "لا شيء مستحقّ للمراجعة الآن. تابع التعلّم لبناء مجموعتك.",
@@ -217,6 +292,61 @@ const AR: Record<Key, string> = {
   done: "تم",
   cardXofY: "بطاقة {n} من {total}",
   reviewSubtitle: "تكرار متباعد لكل ما هو مستحقّ للمراجعة.",
+
+  // Stats
+  statsTitle: "الإحصائيات",
+  statsSubtitle: "نسبة تذكّرك، وسلسلتك، وأين تركّز تالياً.",
+  statsEmpty: "لا توجد بيانات مراجعة بعد. تعلّم قسماً وستظهر إحصائياتك هنا.",
+  streak: "السلسلة",
+  days: "يوم",
+  todayGoal: "اليوم",
+  dueNow: "مستحقّ الآن",
+  recallRate: "نسبة التذكّر",
+  last100: "آخر 100 مراجعة",
+  forecast7: "المستحقّ خلال 7 أيام",
+  byFocus: "حسب محور التركيز",
+  byFocusHint: "الأشرطة الأقل تدلّ على نقاط ضعف — درّب عليها لتتقدّم أسرع.",
+  drill: "تدرّب",
+  activity14: "النشاط (14 يوماً)",
+  leeches: "النقاط العالقة",
+  leechesHint: "عناصر تنساها باستمرار. فكّر في إعادة صياغتها في ملف الكورس.",
+  lapsesN: "{n} مرّات نسيان",
+  leechHint: "أخطأت بهذا عدّة مرّات — تمهّل وأتقِنه جيداً.",
+
+  // Written
+  yourAnswer: "إجابتك",
+
+  // Reminders
+  remindTitle: "حان وقت المراجعة",
+  remindBody: "لديك {n} عنصراً مستحقّاً في سَهل.",
+
+  // Settings
+  settingsTitle: "الإعدادات",
+  settingsSubtitle: "الأهداف والتذكيرات وبياناتك — كلّها محفوظة على هذا الجهاز.",
+  dailyGoal: "الهدف اليومي",
+  dailyGoalHint: "كم مراجعة تستهدف يومياً.",
+  cardsPerDay: "بطاقة / يوم",
+  reminders: "تذكيرات المراجعة",
+  remindersHint: "احصل على إشعار محلي عند استحقاق المراجعة (أثناء فتح التطبيق).",
+  notifDenied: "لم يُمنح إذن الإشعارات.",
+  notifUnsupported: "هذا المتصفّح لا يدعم الإشعارات.",
+  notifBlocked: "الإشعارات محظورة في إعدادات متصفّحك.",
+  installApp: "تثبيت التطبيق",
+  installHint: "أضِف سَهل إلى شاشتك الرئيسية لتجربة شبيهة بالتطبيقات تعمل دون اتصال.",
+  backupTitle: "النسخ الاحتياطي والاستعادة",
+  backupHint:
+    "كورساتك وتقدّمك محفوظة في هذا المتصفّح فقط. صدّر نسخة احتياطية للحفاظ عليها.",
+  backupDownload: "تنزيل نسخة احتياطية",
+  backupRestore: "استعادة من ملف",
+  restoreOk: "تمت استعادة النسخة الاحتياطية.",
+  restoreFail: "تعذّرت قراءة ملف النسخة الاحتياطية.",
+  restoreReplaceConfirm:
+    "استبدال كل البيانات الحالية بهذه النسخة؟ اضغط إلغاء للدمج بدلاً من ذلك.",
+  dangerZone: "منطقة الخطر",
+  resetHint: "حذف نهائي لكل الكورسات والتقدّم وسجلّ المراجعة على هذا الجهاز.",
+  resetAll: "إعادة ضبط كل شيء",
+  resetConfirm: "حذف كل البيانات المحلية؟ لا يمكن التراجع.",
+  resetOk: "تم مسح كل البيانات.",
 };
 
 const DICT: Record<Lang, Record<Key, string>> = { en: EN, ar: AR };

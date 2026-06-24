@@ -1,8 +1,67 @@
+import {
+  createEmptyCard,
+  fsrs,
+  Rating,
+  type Card,
+  type Grade as FsrsGrade,
+} from "ts-fsrs";
 import type { Grade, ReviewableType, ReviewItem } from "./types";
 
-const DAY_MS = 86_400_000;
+// FSRS-6 scheduler with library defaults. Dependency is `ts-fsrs` (MIT, runs
+// fully in the browser — no backend, no network). It reaches a target
+// retention with fewer reviews than the old SM-2 variant.
+const scheduler = fsrs();
 
-/** Create a fresh review item with SM-2 defaults, due now. */
+const RATING: Record<Grade, FsrsGrade> = {
+  again: Rating.Again,
+  hard: Rating.Hard,
+  good: Rating.Good,
+  easy: Rating.Easy,
+};
+
+/** Number of lapses after which an item is treated as a "leech". */
+export const LEECH_THRESHOLD = 4;
+
+/** Build a ts-fsrs Card from a stored item. Legacy items (pre-FSRS) and brand
+ *  new items both fall back to a fresh card seeded at their due date. */
+function toCard(item: ReviewItem): Card {
+  if (item.stability == null || item.state == null) {
+    return createEmptyCard(new Date(item.dueAt ?? Date.now()));
+  }
+  return {
+    due: new Date(item.dueAt),
+    stability: item.stability,
+    difficulty: item.difficulty ?? 0,
+    elapsed_days: item.elapsed_days ?? 0,
+    scheduled_days: item.scheduled_days ?? 0,
+    reps: item.reps ?? 0,
+    lapses: item.lapses ?? 0,
+    learning_steps: item.learning_steps ?? 0,
+    state: item.state,
+    last_review: item.last_review ? new Date(item.last_review) : undefined,
+  };
+}
+
+/** Merge a freshly-scheduled card back into the stored item. */
+function fromCard(item: ReviewItem, card: Card): ReviewItem {
+  return {
+    ...item,
+    dueAt: new Date(card.due).toISOString(),
+    stability: card.stability,
+    difficulty: card.difficulty,
+    elapsed_days: card.elapsed_days,
+    scheduled_days: card.scheduled_days,
+    reps: card.reps,
+    lapses: card.lapses,
+    learning_steps: card.learning_steps,
+    state: card.state,
+    last_review: card.last_review
+      ? new Date(card.last_review).toISOString()
+      : undefined,
+  };
+}
+
+/** Create a fresh review item with FSRS defaults, due now. */
 export function newReviewItem(params: {
   id: string;
   courseId: string;
@@ -10,43 +69,31 @@ export function newReviewItem(params: {
   type: ReviewableType;
   dueAt?: string;
 }): ReviewItem {
-  return {
-    id: params.id,
-    courseId: params.courseId,
-    sectionId: params.sectionId,
-    type: params.type,
-    ease: 2.5,
-    interval: 0,
-    reps: 0,
-    lapses: 0,
-    dueAt: params.dueAt ?? new Date().toISOString(),
-  };
+  const card = createEmptyCard(
+    params.dueAt ? new Date(params.dueAt) : new Date()
+  );
+  return fromCard(
+    {
+      id: params.id,
+      courseId: params.courseId,
+      sectionId: params.sectionId,
+      type: params.type,
+      dueAt: params.dueAt ?? new Date().toISOString(),
+    } as ReviewItem,
+    card
+  );
 }
 
 /**
- * SM-2 variant. Grades: again | hard | good | easy.
- * Kept dependency-free and swappable (e.g. for ts-fsrs) later.
+ * Reschedule an item from a grade. Grades: again | hard | good | easy.
+ * Kept behind this small wrapper so the rest of the app stays scheduler-agnostic.
  */
 export function schedule(item: ReviewItem, grade: Grade): ReviewItem {
-  let { ease = 2.5, interval = 0, reps = 0, lapses = 0 } = item;
-  let dueAt: string;
+  const { card } = scheduler.next(toCard(item), new Date(), RATING[grade]);
+  return fromCard(item, card);
+}
 
-  if (grade === "again") {
-    reps = 0;
-    lapses += 1;
-    ease = Math.max(1.3, ease - 0.2);
-    interval = 0;
-    dueAt = new Date(Date.now() + 10 * 60 * 1000).toISOString(); // ~10 min, same session
-  } else {
-    const q = grade === "hard" ? 3 : grade === "good" ? 4 : 5;
-    ease = Math.max(1.3, ease + (0.1 - (5 - q) * (0.08 + (5 - q) * 0.02)));
-    reps += 1;
-    if (reps === 1) interval = 1;
-    else if (reps === 2) interval = 3;
-    else interval = Math.round(interval * ease);
-    if (grade === "hard") interval = Math.max(1, Math.round(interval * 0.8));
-    dueAt = new Date(Date.now() + interval * DAY_MS).toISOString();
-  }
-
-  return { ...item, ease, interval, reps, lapses, dueAt };
+/** A leech is an item that keeps being forgotten — worth reformulating. */
+export function isLeech(item: ReviewItem): boolean {
+  return (item.lapses ?? 0) >= LEECH_THRESHOLD;
 }

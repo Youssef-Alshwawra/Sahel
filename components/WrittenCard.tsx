@@ -55,8 +55,16 @@ export default function WrittenCard({
         </button>
       ) : (
         <div className="mt-5 space-y-4">
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">
+          {value.trim() && (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-4">
+              <p className="text-xs uppercase tracking-wide text-zinc-500">
+                {t("yourAnswer")}
+              </p>
+              <p className="mt-2 whitespace-pre-wrap text-zinc-300">{value}</p>
+            </div>
+          )}
+          <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
+            <p className="text-xs uppercase tracking-wide text-emerald-400/80">
               {t("modelAnswer")}
             </p>
             <Markdown className="mt-2 text-zinc-200">{model}</Markdown>

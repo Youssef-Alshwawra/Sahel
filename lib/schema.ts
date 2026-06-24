@@ -115,15 +115,60 @@ export type Block = z.infer<typeof Block>;
 export type Section = z.infer<typeof Section>;
 export type Focus = z.infer<typeof Focus>;
 
+type Issue = { path: PropertyKey[]; message: string };
+
+function issuesToStrings(issues: readonly Issue[], prefix = ""): string[] {
+  return issues.map((issue) => {
+    const path = issue.path.length ? issue.path.map(String).join(".") : "(root)";
+    return `${prefix}${path}: ${issue.message}`;
+  });
+}
+
 /** Parse unknown JSON into a Course, returning either the value or friendly errors. */
 export function parseCourse(
   data: unknown
 ): { ok: true; course: Course } | { ok: false; errors: string[] } {
   const result = Course.safeParse(data);
   if (result.success) return { ok: true, course: result.data };
-  const errors = result.error.issues.map((issue) => {
-    const path = issue.path.length ? issue.path.join(".") : "(root)";
-    return `${path}: ${issue.message}`;
+  return { ok: false, errors: issuesToStrings(result.error.issues) };
+}
+
+/**
+ * Parse JSON describing one or more sections to merge into an existing course.
+ * Accepts a single section object, a bare array of sections, or an object with
+ * a `sections` array (so a full-course export can be reused as a source).
+ */
+export function parseSection(
+  data: unknown
+): { ok: true; sections: Section[] } | { ok: false; errors: string[] } {
+  let candidates: unknown[];
+  if (Array.isArray(data)) {
+    candidates = data;
+  } else if (
+    data &&
+    typeof data === "object" &&
+    Array.isArray((data as { sections?: unknown }).sections)
+  ) {
+    candidates = (data as { sections: unknown[] }).sections;
+  } else {
+    candidates = [data];
+  }
+
+  const sections: Section[] = [];
+  const errors: string[] = [];
+  candidates.forEach((candidate, i) => {
+    const result = Section.safeParse(candidate);
+    if (result.success) sections.push(result.data);
+    else
+      errors.push(
+        ...issuesToStrings(
+          result.error.issues,
+          candidates.length > 1 ? `[${i}] ` : ""
+        )
+      );
   });
-  return { ok: false, errors };
+
+  if (errors.length) return { ok: false, errors };
+  if (sections.length === 0) return { ok: false, errors: ["__noSection__"] };
+  return { ok: true, sections };
 }

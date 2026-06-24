@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist_Mono, IBM_Plex_Sans_Arabic, Manrope } from "next/font/google";
 import Providers from "./providers";
 import SiteHeader from "@/components/SiteHeader";
@@ -23,6 +23,17 @@ const ibmPlexArabic = IBM_Plex_Sans_Arabic({
 export const metadata: Metadata = {
   title: "Sahel — Learn",
   description: "A personal learning app for AI-generated JSON courses.",
+  applicationName: "Sahel",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Sahel",
+  },
+  icons: { icon: "/icon.svg", apple: "/icon.svg" },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#09090b",
 };
 
 // Set lang/dir from the saved preference before hydration to avoid a flash.
