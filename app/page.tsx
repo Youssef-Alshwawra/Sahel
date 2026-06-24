@@ -26,7 +26,18 @@ export default function Home() {
   }
 
   useEffect(() => {
-    refresh();
+    let cancelled = false;
+
+    Promise.all([getCourses(), getAllProgress()]).then(([c, p]) => {
+      if (cancelled) return;
+      setCourses(c);
+      setProgress(p);
+      setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   function showToast(message: string) {

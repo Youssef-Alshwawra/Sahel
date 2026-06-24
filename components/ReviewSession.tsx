@@ -19,6 +19,26 @@ function blockFocus(block: Block): Focus | undefined {
   return "focus" in block ? block.focus : undefined;
 }
 
+async function buildReviewQueue(
+  courseId?: string,
+  focus?: Focus
+): Promise<QueueEntry[]> {
+  const courses = await getCourses();
+  const due = await getDueItems(Date.now(), courseId);
+  const entries: QueueEntry[] = [];
+
+  for (const item of due) {
+    const course = courses[item.courseId];
+    if (!course) continue;
+    const found = findBlock(course, item.id);
+    if (!found) continue;
+    if (focus && blockFocus(found.block) !== focus) continue;
+    entries.push({ item, block: found.block, course });
+  }
+
+  return shuffle(entries);
+}
+
 export default function ReviewSession({
   courseId,
   focus,
@@ -36,24 +56,25 @@ export default function ReviewSession({
     setLoading(true);
     setPos(0);
     setStats({ reviewed: 0, autoGraded: 0, correct: 0 });
-    const courses = await getCourses();
-    const due = await getDueItems(Date.now(), courseId);
-    const entries: QueueEntry[] = [];
-    for (const item of due) {
-      const course = courses[item.courseId];
-      if (!course) continue;
-      const found = findBlock(course, item.id);
-      if (!found) continue;
-      if (focus && blockFocus(found.block) !== focus) continue;
-      entries.push({ item, block: found.block, course });
-    }
-    setQueue(shuffle(entries));
+    setQueue(await buildReviewQueue(courseId, focus));
     setLoading(false);
   }, [courseId, focus]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+
+    buildReviewQueue(courseId, focus).then((entries) => {
+      if (cancelled) return;
+      setPos(0);
+      setStats({ reviewed: 0, autoGraded: 0, correct: 0 });
+      setQueue(entries);
+      setLoading(false);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [courseId, focus]);
 
   const current = queue[pos];
   const done = !loading && queue.length > 0 && pos >= queue.length;

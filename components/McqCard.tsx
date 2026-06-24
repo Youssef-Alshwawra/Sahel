@@ -29,12 +29,6 @@ export default function McqCard({
     ? pick(lang, block.explain, block.explainAr)
     : undefined;
 
-  // Reset when the block changes (cards are reused across a session).
-  useEffect(() => {
-    setSelected(null);
-    setSubmitted(false);
-  }, [block.id]);
-
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (!submitted) {

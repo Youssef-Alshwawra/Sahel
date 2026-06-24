@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { WrittenBlock } from "@/lib/types";
 import { pick, useLang } from "@/lib/i18n";
 import FocusBadge from "./FocusBadge";
@@ -22,11 +22,6 @@ export default function WrittenCard({
 
   const question = pick(lang, block.question, block.questionAr);
   const model = pick(lang, block.model, block.modelAr);
-
-  useEffect(() => {
-    setValue("");
-    setRevealed(false);
-  }, [block.id]);
 
   return (
     <div>

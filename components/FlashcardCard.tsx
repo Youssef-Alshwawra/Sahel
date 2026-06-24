@@ -23,10 +23,6 @@ export default function FlashcardCard({
   const back = pick(lang, block.back, block.backAr);
 
   useEffect(() => {
-    setRevealed(false);
-  }, [block.id]);
-
-  useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (!revealed && (e.key === " " || e.key === "Enter")) {
         e.preventDefault();

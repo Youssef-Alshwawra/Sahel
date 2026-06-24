@@ -30,10 +30,8 @@ export default function FillCard({
   const parts = block.template.split("____");
 
   useEffect(() => {
-    setValue("");
-    setSubmitted(false);
     inputRef.current?.focus();
-  }, [block.id]);
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
