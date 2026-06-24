@@ -1,6 +1,6 @@
-import type { Course, Block, Section, Focus } from "./schema";
+import type { Course, Block, Section, Focus, Term } from "./schema";
 
-export type { Course, Block, Section, Focus };
+export type { Course, Block, Section, Focus, Term };
 
 /** Narrow a Block down to a single variant, e.g. BlockOf<"mcq">. */
 export type BlockOf<T extends Block["type"]> = Extract<Block, { type: T }>;

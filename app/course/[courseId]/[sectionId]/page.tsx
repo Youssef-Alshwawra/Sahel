@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowRight, BrainCircuit, PartyPopper } from "lucide-react";
+import { ArrowLeft, ArrowRight, BrainCircuit, PartyPopper } from "lucide-react";
 import type { Block, Course, Section } from "@/lib/types";
 import { isReviewable } from "@/lib/types";
 import {
@@ -69,10 +69,33 @@ export default function LearnPage() {
     });
   }, [section]);
 
+  const retreat = useCallback(() => {
+    if (phase === "done") {
+      if (section && section.blocks.length > 0) {
+        setIndex(section.blocks.length - 1);
+        setPhase("blocks");
+      }
+      return;
+    }
+
+    if (phase !== "blocks") return;
+    if (index === 0) {
+      setPhase("outline");
+      return;
+    }
+
+    setIndex((current) => Math.max(0, current - 1));
+  }, [index, phase, section]);
+
   // Enter / Space advances past non-interactive content blocks.
   useEffect(() => {
     if (phase !== "blocks" || !isContent) return;
     function onKey(e: KeyboardEvent) {
+      if (document.querySelector('[role="dialog"][aria-modal="true"]')) return;
+
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("button, a, input, textarea, select")) return;
+
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         advance();
@@ -143,6 +166,11 @@ export default function LearnPage() {
   const nextSection = course.sections[sectionIdx + 1];
   const courseTitle = pick(lang, course.title, course.titleAr);
   const sectionTitle = pick(lang, section.title, section.titleAr);
+  const courseUiIsArabic =
+    course.language === "ar" ||
+    (course.language === "mixed" && lang === "ar");
+  const previousLabel = courseUiIsArabic ? "السابق" : t("previous");
+  const slideDir = course.language === "mixed" ? dir : course.dir;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -178,30 +206,39 @@ export default function LearnPage() {
       )}
 
       {phase === "blocks" && block && (
-        <div
-          dir={dir}
-          className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6"
-        >
-          {isContent ? (
-            <div>
-              <ContentBlock block={block} />
-              <button
-                autoFocus
-                onClick={advance}
-                className="mt-6 inline-flex items-center gap-1.5 rounded-lg bg-zinc-100 px-5 py-2.5 font-medium text-zinc-900 transition-colors hover:bg-white"
-              >
-                {t("next")}
-                <ArrowRight className="h-4 w-4 rtl:rotate-180" />
-              </button>
-            </div>
-          ) : (
-            <InteractiveCard
-              key={`${index}-${"id" in block ? block.id : index}`}
-              block={block}
-              mode="learn"
-              onDone={handleOutcome}
-            />
-          )}
+        <div dir={slideDir}>
+          <button
+            onClick={retreat}
+            className="mb-3 inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-sm font-medium text-zinc-400 transition-colors hover:bg-zinc-900 hover:text-zinc-100"
+          >
+            <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
+            {previousLabel}
+          </button>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6">
+            {isContent ? (
+              <div>
+                <ContentBlock
+                  block={block}
+                  contentLanguage={courseUiIsArabic ? "ar" : "en"}
+                />
+                <button
+                  autoFocus
+                  onClick={advance}
+                  className="mt-6 inline-flex items-center gap-1.5 rounded-lg bg-zinc-100 px-5 py-2.5 font-medium text-zinc-900 transition-colors hover:bg-white"
+                >
+                  {t("next")}
+                  <ArrowRight className="h-4 w-4 rtl:rotate-180" />
+                </button>
+              </div>
+            ) : (
+              <InteractiveCard
+                key={`${index}-${"id" in block ? block.id : index}`}
+                block={block}
+                mode="learn"
+                onDone={handleOutcome}
+              />
+            )}
+          </div>
         </div>
       )}
 
@@ -215,6 +252,13 @@ export default function LearnPage() {
             {t("sectionCompleteBody", { title: sectionTitle })}
           </p>
           <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+            <button
+              onClick={retreat}
+              className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-5 py-2.5 font-medium text-zinc-200 transition-colors hover:bg-zinc-800"
+            >
+              <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
+              {previousLabel}
+            </button>
             {nextSection ? (
               <Link
                 href={`/course/${course.id}/${nextSection.id}`}

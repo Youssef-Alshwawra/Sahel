@@ -75,6 +75,13 @@ const WrittenBlock = z.object({
   focus: Focus.optional(),
 });
 
+export const Term = z.object({
+  term: z.string(),
+  termAr: z.string().optional(),
+  definition: z.string(),
+  definitionAr: z.string().optional(),
+});
+
 export const Block = z.discriminatedUnion("type", [
   NoteBlock,
   DiagramBlock,
@@ -105,6 +112,7 @@ export const Course = z.object({
   titleAr: z.string().optional(),
   description: z.string().optional(),
   descriptionAr: z.string().optional(),
+  terms: z.array(Term).optional(),
   language: z.enum(["en", "ar", "mixed"]).default("en"),
   dir: z.enum(["ltr", "rtl"]).default("ltr"),
   sections: z.array(Section).min(1),
@@ -114,6 +122,7 @@ export type Course = z.infer<typeof Course>;
 export type Block = z.infer<typeof Block>;
 export type Section = z.infer<typeof Section>;
 export type Focus = z.infer<typeof Focus>;
+export type Term = z.infer<typeof Term>;
 
 type Issue = { path: PropertyKey[]; message: string };
 

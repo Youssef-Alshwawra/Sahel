@@ -157,3 +157,10 @@ body {
   max-width: 100%;
   height: auto;
 }
+
+.mermaid-zoom-content svg,
+.mermaid-preview-content svg {
+  width: 100% !important;
+  max-width: none !important;
+  height: auto !important;
+}

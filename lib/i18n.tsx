@@ -24,6 +24,13 @@ const EN = {
   library: "Library",
   librarySubtitle: "Your imported courses, grouped by category.",
   loading: "Loading…",
+  preview: "Preview",
+  zoomIn: "Zoom in",
+  zoomOut: "Zoom out",
+  resetZoom: "Reset zoom",
+  diagram: "Diagram",
+  diagramPreview: "Diagram preview",
+  dragToMove: "Drag the diagram to move around.",
 
   noCoursesTitle: "No courses yet",
   noCoursesBody: "Import a course JSON, or load the sample to take a look around.",
@@ -35,6 +42,10 @@ const EN = {
   progress: "Progress",
   courseProgress: "Course progress",
   reviewThisCourse: "Review this course",
+  terms: "Terms",
+  termsTitle: "Course terms",
+  termsFor: "Key terminology used in “{title}”.",
+  noTerms: "This course does not include any terms yet.",
   export: "Export",
   delete: "Delete",
   blocks: "blocks",
@@ -50,6 +61,7 @@ const EN = {
 
   outline: "Outline",
   begin: "Begin",
+  previous: "Previous",
   next: "Next",
   sectionComplete: "Section complete",
   sectionCompleteBody:
@@ -186,7 +198,8 @@ const EN = {
   resetOk: "All data cleared.",
 } as const;
 
-type Key = keyof typeof EN;
+export type TranslationKey = keyof typeof EN;
+type Key = TranslationKey;
 
 const AR: Record<Key, string> = {
   appName: "سَهل",
@@ -197,6 +210,13 @@ const AR: Record<Key, string> = {
   library: "المكتبة",
   librarySubtitle: "كورساتك المستوردة، مرتّبة حسب الفئة.",
   loading: "جارٍ التحميل…",
+  preview: "معاينة",
+  zoomIn: "تكبير",
+  zoomOut: "تصغير",
+  resetZoom: "إعادة الحجم",
+  diagram: "مخطط",
+  diagramPreview: "معاينة المخطط",
+  dragToMove: "اسحب المخطط بالماوس للتنقّل داخله.",
 
   noCoursesTitle: "لا توجد كورسات بعد",
   noCoursesBody: "استورد كورس JSON، أو حمّل النموذج لتتعرّف على التطبيق.",
@@ -208,6 +228,10 @@ const AR: Record<Key, string> = {
   progress: "التقدّم",
   courseProgress: "تقدّم الكورس",
   reviewThisCourse: "مراجعة هذا الكورس",
+  terms: "المصطلحات",
+  termsTitle: "مصطلحات الكورس",
+  termsFor: "المصطلحات الأساسية المستخدمة في «{title}».",
+  noTerms: "لا يحتوي هذا الكورس على مصطلحات بعد.",
   export: "تصدير",
   delete: "حذف",
   blocks: "عناصر",
@@ -222,6 +246,7 @@ const AR: Record<Key, string> = {
 
   outline: "المخطّط",
   begin: "ابدأ",
+  previous: "السابق",
   next: "التالي",
   sectionComplete: "اكتمل القسم",
   sectionCompleteBody: "أُنجز «{title}». أُضيفت الإجابات الخاطئة إلى مجموعة المراجعة.",
@@ -358,6 +383,14 @@ function interpolate(s: string, vars?: Record<string, string | number>): string 
   );
 }
 
+export function translate(
+  lang: Lang,
+  key: TranslationKey,
+  vars?: Record<string, string | number>
+): string {
+  return interpolate(DICT[lang][key] ?? DICT.en[key] ?? key, vars);
+}
+
 // ---- Context -------------------------------------------------------------
 
 type LangContext = {
@@ -376,7 +409,10 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   // Hydrate from localStorage (default English).
   useEffect(() => {
     const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored === "ar" || stored === "en") setLangState(stored);
+    if (stored !== "ar" && stored !== "en") return;
+
+    const frame = window.requestAnimationFrame(() => setLangState(stored));
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   // Keep <html> lang/dir and storage in sync.
@@ -395,7 +431,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
 
   const t = useCallback(
     (key: Key, vars?: Record<string, string | number>) =>
-      interpolate(DICT[lang][key] ?? DICT.en[key] ?? key, vars),
+      translate(lang, key, vars),
     [lang]
   );
 

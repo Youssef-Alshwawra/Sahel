@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowRight,
+  BookOpenText,
   BrainCircuit,
   CheckCircle2,
   Download,
@@ -151,13 +152,24 @@ export default function CoursePage() {
           </div>
           <ProgressBar value={pct} />
         </div>
-        <Link
-          href={`/review?course=${course.id}`}
-          className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"
-        >
-          <BrainCircuit className="h-4 w-4 text-indigo-400" />
-          {t("reviewThisCourse")}
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          {course.terms && course.terms.length > 0 && (
+            <Link
+              href={`/course/${course.id}/terms`}
+              className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"
+            >
+              <BookOpenText className="h-4 w-4 text-amber-400" />
+              {t("terms")}
+            </Link>
+          )}
+          <Link
+            href={`/review?course=${course.id}`}
+            className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-200 transition-colors hover:bg-zinc-800"
+          >
+            <BrainCircuit className="h-4 w-4 text-indigo-400" />
+            {t("reviewThisCourse")}
+          </Link>
+        </div>
       </div>
 
       <h2 className="mb-3 mt-10 text-xs font-semibold uppercase tracking-wider text-zinc-500">
