@@ -12,6 +12,7 @@ import {
 const store = createStore("sahel-db", "kv");
 
 const COURSES_KEY = "courses";
+const DATA_COURSE_IDS_KEY = "dataCourseIds";
 const PROGRESS_KEY = "progress";
 const REVIEW_KEY = "reviewItems";
 const LOG_KEY = "reviewLog";
@@ -35,6 +36,43 @@ export async function saveCourse(course: Course): Promise<void> {
   const all = await getCourses();
   all[course.id] = course;
   await set(COURSES_KEY, all, store);
+}
+
+/**
+ * Make courses discovered in the server-side data directory available to the
+ * existing client-only learning flow. Data-directory courses are authoritative
+ * for matching ids; imported courses with other ids are preserved.
+ */
+export async function syncDataCourses(courses: Course[]): Promise<void> {
+  const [all, previousIds, progress, reviewItems] = await Promise.all([
+    getCourses(),
+    get<string[]>(DATA_COURSE_IDS_KEY, store),
+    getAllProgress(),
+    getReviewItems(),
+  ]);
+
+  const nextIds = new Set(courses.map((course) => course.id));
+  const removedIds = new Set(
+    (previousIds ?? []).filter((courseId) => !nextIds.has(courseId))
+  );
+
+  for (const courseId of removedIds) {
+    delete all[courseId];
+    delete progress[courseId];
+  }
+
+  for (const [reviewId, item] of Object.entries(reviewItems)) {
+    if (removedIds.has(item.courseId)) delete reviewItems[reviewId];
+  }
+
+  for (const course of courses) all[course.id] = course;
+
+  await Promise.all([
+    set(COURSES_KEY, all, store),
+    set(DATA_COURSE_IDS_KEY, [...nextIds], store),
+    set(PROGRESS_KEY, progress, store),
+    set(REVIEW_KEY, reviewItems, store),
+  ]);
 }
 
 /**
@@ -293,6 +331,7 @@ export async function importAll(
 export async function clearAll(): Promise<void> {
   await Promise.all([
     del(COURSES_KEY, store),
+    del(DATA_COURSE_IDS_KEY, store),
     del(PROGRESS_KEY, store),
     del(REVIEW_KEY, store),
     del(LOG_KEY, store),

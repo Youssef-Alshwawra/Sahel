@@ -1,0 +1,856 @@
+{
+  "schemaVersion": 1,
+  "id": "laravel-13-jobs-and-queues-ar",
+  "category": "تطوير الويب",
+  "title": "Laravel 13 — Jobs و Queues",
+  "description": "دورة عربية عملية ومتدرجة لفهم Jobs وQueues في Laravel 13، من دورة حياة المهمة وحتى retries وtimeouts وuniqueness وchains وbatches والاختبارات والتشغيل في الإنتاج.",
+  "terms": [
+    {
+      "term": "Job",
+      "definition": "كلاس يصف وحدة عمل مؤجلة وبياناتها، وينفّذ العمل داخل الدالة `handle()`."
+    },
+    {
+      "term": "Queue",
+      "definition": "مسار منطقي تنتظر فيه Jobs قبل أن تلتقطها Workers، مثل `default` أو `emails`."
+    },
+    {
+      "term": "Connection",
+      "definition": "إعداد الاتصال بمخزن الطابور مثل `database` أو `redis` أو `sqs`. يمكن للـConnection الواحدة احتواء عدة Queues."
+    },
+    {
+      "term": "Worker",
+      "definition": "عملية طويلة العمر تسحب Jobs من Queue وتستدعي `handle()` لكل واحدة."
+    },
+    {
+      "term": "Dispatch",
+      "definition": "إرسال Job إلى نظام الطابور، مثل `SendEmail::dispatch($order)`."
+    },
+    {
+      "term": "Attempt",
+      "definition": "محاولة Worker لمعالجة Job. قد تُستهلك بسبب exception أو timeout أو `release()` أو middleware يعيد المهمة."
+    },
+    {
+      "term": "Retry",
+      "definition": "إعادة محاولة Job بعد فشل مؤقت، ضمن حدود مثل `Tries` أو `retryUntil()`."
+    },
+    {
+      "term": "Backoff",
+      "definition": "مدة الانتظار بين محاولة فاشلة والمحاولة التالية، وتُستخدم لتخفيف الضغط على خدمة متعثرة."
+    },
+    {
+      "term": "Timeout",
+      "definition": "أقصى مدة يسمح بها Worker لتنفيذ Job قبل إنهاء المحاولة. يجب أن يكون عادة أقل من `retry_after`."
+    },
+    {
+      "term": "retry_after",
+      "definition": "المدة التي بعدها يعتبر Queue backend أن Job المحجوزة لم تكتمل ويجعلها متاحة لمحاولة أخرى."
+    },
+    {
+      "term": "Idempotency",
+      "definition": "خاصية تجعل إعادة تنفيذ العملية بالمدخل نفسه آمنة ولا تنتج أثرًا مكررًا مثل خصم مالي ثانٍ."
+    },
+    {
+      "term": "Unique Job",
+      "definition": "Job تستخدم lock لمنع dispatch نسخة أخرى تحمل المفتاح الفريد نفسه خلال فترة القفل."
+    },
+    {
+      "term": "WithoutOverlapping",
+      "definition": "Job middleware تمنع التنفيذ المتزامن لمهمتين تشتركان في المفتاح نفسه، لكنها لا تمنع تراكمهما في Queue."
+    },
+    {
+      "term": "Chain",
+      "definition": "سلسلة Jobs مرتبة؛ لا تبدأ التالية حتى تنجح السابقة، وتتوقف بقية السلسلة عند الفشل."
+    },
+    {
+      "term": "Batch",
+      "definition": "مجموعة Jobs قابلة للتنفيذ المتوازي مع تتبع progress وإمكانية الإلغاء وcallbacks للنجاح والفشل."
+    },
+    {
+      "term": "Horizon",
+      "definition": "لوحة Laravel لإدارة ومراقبة Queues التي تعمل باستخدام Redis."
+    }
+  ],
+  "language": "ar",
+  "dir": "rtl",
+  "sections": [
+    {
+      "id": "s1",
+      "title": "الصورة الذهنية: Job وQueue وWorker",
+      "outline": [
+        "المشكلة التي تحلها المهام الخلفية",
+        "الفرق بين Job وQueue Connection وQueue وWorker",
+        "دورة حياة المهمة من dispatch حتى النجاح أو الفشل",
+        "متى نستخدم Job ومتى نبقي العمل داخل الطلب"
+      ],
+      "summary": "قبل حفظ الأوامر، نحتاج صورة ذهنية دقيقة. الـJob تصف عملاً، والـQueue تحفظه، والـWorker ينفذه. فصل هذه الأدوار هو أساس فهم كل ما سيأتي لاحقًا.",
+      "blocks": [
+        {
+          "type": "note",
+          "md": "## لماذا توجد Jobs؟\n\nتخيّل أن المستخدم ضغط زر **إتمام الطلب**. داخل نفس HTTP request تريد حفظ الطلب، إرسال بريد، إنشاء PDF، ضغط صور، والاتصال بخدمة شحن. إذا نفذت كل شيء قبل الرد فسيبقى المستخدم منتظرًا، وقد ينتهي الطلب بـtimeout رغم أن حفظ الطلب نجح.\n\nالحل هو تنفيذ الجزء الضروري فورًا، ثم **dispatch** لأعمال يمكن تأجيلها. يعود الرد للمستخدم بسرعة، وتنفذ Workers الأعمال في الخلفية. الفائدة ليست السرعة فقط؛ بل أيضًا retry، توزيع الحمل، عزل الأعطال، ومراقبة الأعمال البطيئة.\n\nقاعدة عملية: ضع في الـrequest ما يلزم لصحة الرد الحالي، وانقل إلى Job ما يمكن أن يحدث بعده بأمان."
+        },
+        {
+          "type": "diagram",
+          "engine": "mermaid",
+          "code": "flowchart LR\n  A[HTTP Request] --> B[Controller]\n  B --> C[Dispatch Job]\n  C --> D[(Queue Backend)]\n  B --> E[Fast Response]\n  D --> F[Worker]\n  F --> G[handle method]\n  G -->|success| H[Delete from queue]\n  G -->|exception| I[Retry or fail]",
+          "caption": "دورة الحياة الأساسية للمهمة المؤجلة"
+        },
+        {
+          "type": "note",
+          "md": "## أربعة مصطلحات لا تخلط بينها\n\n- **Job:** كلاس يصف العمل وبياناته، مثل `GenerateInvoicePdf`.\n- **Connection:** إعداد الاتصال بمخزن الطابور، مثل `database` أو `redis` أو `sqs`.\n- **Queue:** مسار مسمى داخل connection، مثل `high` أو `emails` أو `default`. يمكن لاتصال Redis واحد أن يحوي عدة queues.\n- **Worker:** process طويل العمر يسحب jobs من queue وينادي `handle()`.\n\nوجود صف في جدول `jobs` لا يعني أنه سينفذ وحده؛ لا بد من Worker يعمل. كما أن `QUEUE_CONNECTION=sync` لا يشغّل المهمة في الخلفية: ينفذها فورًا داخل نفس الطلب، لذلك هو مفيد للتطوير لكنه لا يثبت أن نظام الطابور يعمل فعليًا."
+        },
+        {
+          "type": "mcq",
+          "id": "s1-q1",
+          "question": "ما السبب الأهم لنقل إنشاء PDF ثقيل إلى Job؟",
+          "options": [
+            "لأن Job تجعل كود PHP يُنفذ بلا ذاكرة",
+            "لتقليل زمن HTTP response وإتاحة retry وعزل الفشل",
+            "لأن Controllers لا تستطيع إنشاء ملفات",
+            "لأن Queue تلغي الحاجة إلى قاعدة البيانات"
+          ],
+          "answer": 1,
+          "explain": "الـJob لا تجعل العمل مجانيًا؛ هي تنقله خارج المسار الحرج للطلب وتمنحك آليات تشغيل وإعادة محاولة ومراقبة.",
+          "focus": "why"
+        },
+        {
+          "type": "mcq",
+          "id": "s1-q2",
+          "question": "أي عنصر يستدعي handle() فعليًا في الوضع غير المتزامن؟",
+          "options": [
+            "المتصفح",
+            "Migration جدول jobs",
+            "Queue Worker",
+            "Route cache"
+          ],
+          "answer": 2,
+          "explain": "الـWorker يسحب payload من backend، يعيد بناء الـJob، ثم يستدعي handle().",
+          "focus": "how"
+        },
+        {
+          "type": "mcq",
+          "id": "s1-q3",
+          "question": "لديك Redis connection واحد ومساران emails وhigh. ما الوصف الصحيح؟",
+          "options": [
+            "هما Worker واحد بالضرورة",
+            "هما Queue Connection منفصلان",
+            "هما Queue مسميان داخل Connection واحد",
+            "هما Job class واحد"
+          ],
+          "answer": 2,
+          "explain": "Connection يحدد backend وإعداد الاتصال، بينما queue اسم لمسار منطقي داخله.",
+          "focus": "what"
+        },
+        {
+          "type": "mcq",
+          "id": "s1-q4",
+          "question": "متى يكون إبقاء العمل داخل HTTP request منطقيًا أكثر من Queue؟",
+          "options": [
+            "عندما يجب معرفة نجاح العملية قبل إرسال الرد ولا يمكن فصلها بأمان",
+            "عندما يستغرق العمل عشر دقائق",
+            "عندما نريد retry بعد تعطل خدمة خارجية",
+            "عندما يمكن للمستخدم متابعة العمل دون انتظار"
+          ],
+          "answer": 0,
+          "explain": "إذا كانت نتيجة العمل جزءًا لازمًا من صحة الرد الحالي، قد يلزم تنفيذه مباشرة. أما الأعمال البطيئة وغير اللازمة للرد فمرشحة للطابور.",
+          "focus": "when"
+        },
+        {
+          "type": "fill",
+          "id": "s1-f1",
+          "prompt": "أكمل اسم الدالة التي يناديها الـWorker لتنفيذ الـJob:",
+          "lang": "php",
+          "template": "public function ____(/* dependencies */): void",
+          "answer": "handle",
+          "hints": [
+            "اسمها يعني معالجة المهمة"
+          ],
+          "focus": "syntax"
+        },
+        {
+          "type": "fill",
+          "id": "s1-f2",
+          "prompt": "أكمل الأمر الذي يبدأ Worker:",
+          "lang": "shell",
+          "template": "php artisan ____",
+          "answer": "queue:work",
+          "hints": [
+            "الأمر مكوّن من namespace ثم فعل"
+          ],
+          "focus": "syntax"
+        },
+        {
+          "type": "flashcard",
+          "id": "s1-fc1",
+          "front": "هل QUEUE_CONNECTION=sync يعني أن المهمة تعمل في الخلفية؟",
+          "back": "لا. sync ينفذ الـJob فورًا داخل نفس PHP process ونفس الطلب؛ لا يحتاج Worker ولا يعطي فصلًا زمنيًا حقيقيًا.",
+          "focus": "what"
+        },
+        {
+          "type": "written",
+          "id": "s1-w1",
+          "question": "قسّم عملية إنشاء طلب متجر إلى جزء متزامن وجزء مؤجل، وفسّر قرارك.",
+          "model": "متزامن: validation، التحقق من المخزون المطلوب لصحة العملية، وإنشاء order داخل transaction. مؤجل: بريد التأكيد، إنشاء PDF، analytics، وربما مزامنة الشحن إذا لم تكن لازمة لقبول الطلب. السبب هو إعادة الرد بسرعة مع إبقاء ضمانات صحة الطلب داخل المسار المتزامن.",
+          "focus": "when"
+        }
+      ]
+    },
+    {
+      "id": "s2",
+      "title": "إنشاء Job وإرسالها والـSerialization",
+      "outline": [
+        "إعداد database queue",
+        "بنية Job حديثة في Laravel 13",
+        "dispatch وdelay وdispatchSync",
+        "تمرير Eloquent models وحقن dependencies",
+        "الإرسال الآمن بعد database commit"
+      ],
+      "summary": "في هذا القسم ننشئ Job حقيقية، نرسلها إلى الطابور، ونفهم ما الذي يُخزّن فعلًا. التركيز على الفرق بين بيانات الـconstructor وخدمات handle وعلى مشكلة dispatch داخل transaction.",
+      "blocks": [
+        {
+          "type": "note",
+          "md": "## إعداد سريع باستخدام database driver\n\nضع `QUEUE_CONNECTION=database` في `.env`. مشاريع Laravel الحديثة تتضمن غالبًا migration لجداول الطابور. إن لم تكن موجودة، أنشئها بـ`php artisan make:queue-table` ثم نفّذ `php artisan migrate`.\n\nأنشئ المهمة بـ`php artisan make:job SendOrderConfirmation`. الكلاس الناتج يطبق `ShouldQueue` ويستخدم `Queueable`. وجود `ShouldQueue` هو الإشارة إلى أن `dispatch()` يجب أن يضع المهمة في الطابور بدل تنفيذها مباشرة، بحسب connection المختارة."
+        },
+        {
+          "type": "code",
+          "lang": "php",
+          "code": "<?php\n\nnamespace App\\Jobs;\n\nuse App\\Models\\Order;\nuse App\\Services\\OrderMailer;\nuse Illuminate\\Contracts\\Queue\\ShouldQueue;\nuse Illuminate\\Foundation\\Queue\\Queueable;\nuse Illuminate\\Queue\\Attributes\\WithoutRelations;\n\nclass SendOrderConfirmation implements ShouldQueue\n{\n    use Queueable;\n\n    public function __construct(\n        #[WithoutRelations]\n        public Order $order,\n    ) {}\n\n    public function handle(OrderMailer $mailer): void\n    {\n        $mailer->sendConfirmation($this->order);\n    }\n}",
+          "caption": "Job بسيطة بصياغة Laravel 13"
+        },
+        {
+          "type": "note",
+          "md": "## ما الذي يُخزّن في الطابور؟\n\nعند تمرير Eloquent model إلى الـconstructor لا يخزن Laravel نسخة كاملة ثابتة منه عادة؛ يخزن معلومات الهوية ثم يعيد جلبه من قاعدة البيانات وقت التنفيذ. لذلك قد ترى **الحالة الأحدث** للموديل، لا حالته لحظة dispatch. وإذا حُذف قبل التنفيذ فقد تفشل المهمة بسبب model مفقود.\n\nالعلاقات المحمّلة قد تكبّر payload وتُعاد كاملة دون القيود السابقة. استخدم `#[WithoutRelations]` أو `withoutRelations()` عندما لا تحتاجها. أما service مثل `OrderMailer` فمكانها `handle()` كي يحقنها Service Container عند التنفيذ، وليس constructor؛ لأن constructor data تُسلسل إلى الطابور."
+        },
+        {
+          "type": "code",
+          "lang": "php",
+          "code": "use App\\Jobs\\SendOrderConfirmation;\n\nSendOrderConfirmation::dispatch($order);\n\nSendOrderConfirmation::dispatch($order)\n    ->onConnection('redis')\n    ->onQueue('emails')\n    ->delay(now()->addMinutes(5))\n    ->afterCommit();\n\n// تنفيذ فوري داخل العملية الحالية:\nSendOrderConfirmation::dispatchSync($order);",
+          "caption": "أشكال dispatch الشائعة"
+        },
+        {
+          "type": "note",
+          "md": "## لماذا afterCommit مهمة؟\n\nإذا عملت dispatch داخل database transaction فقد يكون الـWorker أسرع من الـcommit. سيحاول جلب Order غير المرئي بعد، أو يقرأ بيانات قديمة، أو ينفذ أثرًا خارجيًا ثم يحدث rollback. `->afterCommit()` يؤجل إرسال المهمة حتى نجاح كل transactions المفتوحة. ويمكن تفعيل `after_commit` على مستوى connection. إذا حصل rollback فلن تُرسل jobs المؤجلة لذلك transaction."
+        },
+        {
+          "type": "mcq",
+          "id": "s2-q1",
+          "question": "لماذا نضع OrderMailer كـparameter في handle بدل تخزينه في constructor؟",
+          "options": [
+            "لأن handle لا يقبل primitive values",
+            "لأن Service Container يحقنه وقت التنفيذ ولا نحتاج تسلسل service object",
+            "لأن constructor لا يعمل في Jobs",
+            "لأن Mailer يجب أن يكون static"
+          ],
+          "answer": 1,
+          "explain": "constructor يحمل بيانات المهمة القابلة للتسلسل، بينما dependencies التشغيلية تُحقن في handle.",
+          "focus": "why"
+        },
+        {
+          "type": "mcq",
+          "id": "s2-q2",
+          "question": "تم dispatch لموديل Product ثم تغير سعره قبل أن يعمل الـWorker. أي سعر قد تقرأه Job؟",
+          "options": [
+            "السعر لحظة dispatch مضمون دائمًا",
+            "السعر الحالي عند إعادة جلب الموديل وقت التنفيذ",
+            "صفر لأن models لا تُقبل في Jobs",
+            "السعر من cache المتصفح"
+          ],
+          "answer": 1,
+          "explain": "Laravel يسلسل هوية الموديل ويعيد جلبه لاحقًا. إن كنت تحتاج snapshot تاريخية، خزّن القيم المطلوبة بوضوح أو صمم سجلًا ثابتًا.",
+          "focus": "how"
+        },
+        {
+          "type": "mcq",
+          "id": "s2-q3",
+          "question": "متى تستخدم dispatchSync؟",
+          "options": [
+            "عندما تريد تنفيذ Job فورًا وتقبل انتظار العملية الحالية",
+            "عندما تريد ضمان تشغيلها على Redis Worker",
+            "عندما تريد delay عشر دقائق",
+            "عندما تريد توزيعها على عدة servers"
+          ],
+          "answer": 0,
+          "explain": "dispatchSync يستخدم نفس شكل الـJob لكنه ينفذ فورًا ولا يمر بطابور خلفي.",
+          "focus": "when"
+        },
+        {
+          "type": "mcq",
+          "id": "s2-q4",
+          "question": "ما الخطر الدقيق من dispatch داخل transaction دون afterCommit؟",
+          "options": [
+            "سيتغير اسم queue تلقائيًا",
+            "قد ينفذ Worker قبل commit فيقرأ سجلًا مفقودًا أو بيانات غير مثبتة",
+            "ستتحول Job إلى Closure",
+            "سيمنع Laravel أي rollback"
+          ],
+          "answer": 1,
+          "explain": "الـWorker process مستقل ولا ينتظر transaction في request إلا إذا طلبت afterCommit.",
+          "focus": "why"
+        },
+        {
+          "type": "fill",
+          "id": "s2-f1",
+          "prompt": "أكمل الـinterface الذي يجعل المهمة تُدفع إلى queue:",
+          "lang": "php",
+          "template": "class GenerateInvoice implements ____",
+          "answer": "ShouldQueue",
+          "hints": [
+            "اسمه يعبّر عن أن الكلاس يجب أن يدخل الطابور"
+          ],
+          "focus": "syntax"
+        },
+        {
+          "type": "fill",
+          "id": "s2-f2",
+          "prompt": "أكمل chain method التي تؤجل dispatch حتى نجاح transaction:",
+          "lang": "php",
+          "template": "GenerateInvoice::dispatch($order)->____();",
+          "answer": "afterCommit",
+          "hints": [
+            "بعد عملية تثبيت transaction"
+          ],
+          "focus": "syntax"
+        },
+        {
+          "type": "flashcard",
+          "id": "s2-fc1",
+          "front": "ماذا يفعل #[WithoutRelations] على Eloquent model داخل Job؟",
+          "back": "يمنع تسلسل العلاقات المحمّلة مع الموديل، فيقل حجم payload ويُتجنب إعادة تحميل علاقات كبيرة أو غير لازمة.",
+          "focus": "what"
+        },
+        {
+          "type": "written",
+          "id": "s2-w1",
+          "question": "تحتاج Job إلى البريد والسعر كما كانا لحظة الشراء حتى لو تغير User أو Product لاحقًا. ماذا تمرر؟ ولماذا؟",
+          "model": "أمرر snapshot صريحًا أو، الأفضل، أقرأ من Order/OrderItem يحتوي القيم التاريخية المثبتة مثل email_at_purchase وunit_price. تمرير User وProduct وحدهما قد يعيد جلب الحالة الجديدة وقت التنفيذ، وهي ليست حقيقة العملية التاريخية.",
+          "focus": "when"
+        }
+      ]
+    },
+    {
+      "id": "s3",
+      "title": "Workers والطوابير والأولوية والنشر",
+      "outline": [
+        "تشغيل queue:work وخياراته",
+        "توجيه jobs إلى connections وqueues",
+        "الأولوية وعدد Workers",
+        "الـWorkers طويلة العمر وإعادة التشغيل عند النشر",
+        "Supervisor وHorizon ومراقبة backlog"
+      ],
+      "summary": "كتابة Job نصف النظام فقط. النصف الآخر هو تشغيل Workers بصورة صحيحة وتوزيع الحمل ومراقبته. هنا ننتقل من كود يعمل محليًا إلى تشغيل يمكن الوثوق به.",
+      "blocks": [
+        {
+          "type": "code",
+          "lang": "shell",
+          "code": "php artisan queue:work database\nphp artisan queue:work redis --queue=high,default --tries=3 --timeout=60\nphp artisan queue:restart",
+          "caption": "أوامر Worker أساسية"
+        },
+        {
+          "type": "note",
+          "md": "## كيف يختار Worker العمل؟\n\nالأمر `queue:work redis --queue=high,default` يستهلك من Redis connection ويفضّل `high` قبل `default`. هذا لا يجعل كل Job أسرع تلقائيًا؛ تحتاج عدد Workers وقدرة CPU/IO كافية. وقد يحدث starvation للطابور الأقل أولوية إذا بقي `high` ممتلئًا، لذا أحيانًا نشغّل Workers مخصصة لكل مسار.\n\nيمكنك توجيه Job وقت dispatch عبر `onConnection()` و`onQueue()`، أو ضبط connection/queue داخل الكلاس. الأسماء تنظم الحمل: مثل `emails` للأعمال القابلة للتأخير و`payments` للأعمال الحساسة."
+        },
+        {
+          "type": "diagram",
+          "engine": "mermaid",
+          "code": "flowchart TB\n  R[(Redis Connection)] --> H[high queue]\n  R --> D[default queue]\n  R --> E[emails queue]\n  W1[Worker group A] --> H\n  W1 --> D\n  W2[Worker group B] --> E",
+          "caption": "Connection واحد، عدة queues، ومجموعات Workers مختلفة"
+        },
+        {
+          "type": "note",
+          "md": "## Worker عملية طويلة العمر\n\n`queue:work` يقلع التطبيق مرة ثم يبقى في الذاكرة. لذلك لا يلاحظ الكود الجديد تلقائيًا، وقد يحتفظ بحالة static أو connection قديمة إن كتبت خدماتك بطريقة سيئة. أثناء deployment نفّذ `php artisan queue:restart`؛ سيطلب من Workers الخروج **بعد إنهاء المهمة الحالية**. يجب أن يديرها process manager مثل Supervisor ليعيد تشغيلها عند الخروج أو الانهيار.\n\nHorizon يعطي dashboard وإدارة ومقاييس لطوابير **Redis** تحديدًا. أما أي backend فتستطيع مراقبته أيضًا عبر logs، failed jobs، وأمر `queue:monitor` لتنبيهك عند تجاوز backlog حدًا معينًا."
+        },
+        {
+          "type": "mcq",
+          "id": "s3-q1",
+          "question": "ماذا يعني --queue=high,default؟",
+          "options": [
+            "إنشاء connectionين جديدين",
+            "استهلاك high بأولوية قبل default من connection المختارة",
+            "تشغيل Job مرتين",
+            "تحويل default إلى high نهائيًا"
+          ],
+          "answer": 1,
+          "explain": "ترتيب الأسماء يحدد ترتيب البحث عن jobs، وليس نوع backend.",
+          "focus": "how"
+        },
+        {
+          "type": "mcq",
+          "id": "s3-q2",
+          "question": "لماذا نحتاج Supervisor أو مدير processes في الإنتاج؟",
+          "options": [
+            "ليكتب Job classes بدلنا",
+            "ليعيد تشغيل Workers إذا خرجت أو انهارت ويحافظ على العدد المطلوب",
+            "ليستبدل Redis بمتصفح المستخدم",
+            "ليمنع كل exceptions داخل handle"
+          ],
+          "answer": 1,
+          "explain": "الـWorker قد يخرج بسبب timeout أو restart أو خطأ. مدير العمليات يعيده كي لا يتوقف الاستهلاك بصمت.",
+          "focus": "why"
+        },
+        {
+          "type": "mcq",
+          "id": "s3-q3",
+          "question": "نشرت كودًا جديدًا لكن Workers ما زالت تنفذ النسخة القديمة. ما الإجراء الصحيح؟",
+          "options": [
+            "حذف جدول jobs",
+            "مسح browser cache",
+            "تنفيذ queue:restart مع وجود process manager",
+            "تغيير كل أسماء Jobs"
+          ],
+          "answer": 2,
+          "explain": "queue:work طويل العمر؛ restart سلس يجعله يقلع التطبيق والكود الجديدين بعد إنهاء العمل الحالي.",
+          "focus": "when"
+        },
+        {
+          "type": "mcq",
+          "id": "s3-q4",
+          "question": "الـemails queue تتأخر ساعتين بينما payments فارغة. أي تشخيص أولي أدق؟",
+          "options": [
+            "التأكد أن Workers تستهلك emails وأن قدرتها تناسب معدل الوصول",
+            "إضافة validation إلى Controller",
+            "إلغاء كل indexes من قاعدة البيانات",
+            "تحويل كل jobs إلى dispatchSync"
+          ],
+          "answer": 0,
+          "explain": "Backlog غالبًا يعني لا يوجد consumer للمسار أو أن throughput أقل من arrival rate. راقب queue names وعدد Workers وزمن كل Job.",
+          "focus": "how"
+        },
+        {
+          "type": "fill",
+          "id": "s3-f1",
+          "prompt": "أكمل method توجيه المهمة إلى emails queue:",
+          "lang": "php",
+          "template": "SendReceipt::dispatch($order)->____('emails');",
+          "answer": "onQueue",
+          "hints": [
+            "ليست onConnection"
+          ],
+          "focus": "syntax"
+        },
+        {
+          "type": "fill",
+          "id": "s3-f2",
+          "prompt": "أكمل أمر إعادة تشغيل Workers بصورة سلسة بعد deployment:",
+          "lang": "shell",
+          "template": "php artisan ____",
+          "answer": "queue:restart",
+          "hints": [
+            "ينتمي إلى namespace الخاص بالطابور"
+          ],
+          "focus": "syntax"
+        },
+        {
+          "type": "flashcard",
+          "id": "s3-fc1",
+          "front": "ما الفرق بين زيادة عدد queues وزيادة عدد Workers؟",
+          "back": "زيادة queues تقسّم العمل منطقيًا وتسمح بالأولوية والعزل، لكنها لا تضيف قدرة تنفيذ وحدها. زيادة Workers تضيف consumers متزامنين وقد ترفع throughput ضمن حدود الموارد والخدمات الخارجية.",
+          "focus": "what"
+        },
+        {
+          "type": "written",
+          "id": "s3-w1",
+          "question": "صمّم توزيع Workers لتطبيق فيه payments حساسة وemails كثيرة وبطيئة. اذكر سبب قرارك.",
+          "model": "أضع payments وemails في queues منفصلة. أشغّل Workers مخصصة وثابتة لـpayments كي لا تحجبها موجة بريد، وWorkers أكثر أو قابلة للتوسع لـemails. أراقب backlog وزمن التنفيذ ومعدل الفشل. لا أعتمد فقط على ترتيب payments,emails إذا كان حجب أحدهما للآخر خطرًا.",
+          "focus": "when"
+        }
+      ]
+    },
+    {
+      "id": "s4",
+      "title": "Attempts وRetries وBackoff وTimeouts والفشل",
+      "outline": [
+        "ما الذي يُعد attempt",
+        "Tries وBackoff وretryUntil وMaxExceptions",
+        "الفرق بين timeout وretry_after",
+        "failed() وجدول failed_jobs وأوامر retry",
+        "تمييز الأخطاء المؤقتة من الدائمة"
+      ],
+      "summary": "إعادة المحاولة ليست زرًا سحريًا؛ تحتاج حدودًا وتأخيرًا وتصنيفًا للأخطاء. الإعداد الخاطئ للـtimeout وretry_after قد يشغل نفس المهمة بالتوازي، لذلك هذا القسم مهم لصحة النظام لا لأدائه فقط.",
+      "blocks": [
+        {
+          "type": "note",
+          "md": "## ما الذي يستهلك Attempt؟\n\nفي Laravel 13 الافتراضي محاولة واحدة ما لم تضبط غير ذلك. المحاولة قد تُستهلك عند exception غير معالجة، timeout، أو `release()` يدوي، وحتى middleware مثل `WithoutOverlapping` عندما لا يحصل على lock ويعيد المهمة للطابور. لذلك Job تستخدم middleware أو release تحتاج `Tries` أكبر أو `retryUntil()`.\n\nاستخدم **backoff** كي لا تضرب خدمة متعثرة فورًا وبكثافة. مثل `[10, 30, 120]`: انتظر 10 ثوانٍ قبل retry الأولى، ثم 30، ثم 120 وما بعدها. Retry مفيدة للأعطال المؤقتة؛ أما بيانات غير صالحة أو اشتراك منتهي فلن تصلحها عشر محاولات."
+        },
+        {
+          "type": "code",
+          "lang": "php",
+          "code": "use Illuminate\\Queue\\Attributes\\Backoff;\nuse Illuminate\\Queue\\Attributes\\MaxExceptions;\nuse Illuminate\\Queue\\Attributes\\Timeout;\nuse Illuminate\\Queue\\Attributes\\Tries;\n\n#[Tries(5)]\n#[MaxExceptions(3)]\n#[Timeout(45)]\n#[Backoff([10, 30, 120])]\nclass SyncShipment implements ShouldQueue\n{\n    use Queueable;\n\n    public function handle(ShippingApi $api): void\n    {\n        $api->sync($this->shipmentId);\n    }\n}",
+          "caption": "حدود التنفيذ وإعادة المحاولة بصياغة Laravel 13"
+        },
+        {
+          "type": "note",
+          "md": "## Timeout ليس retry_after\n\n`timeout` هو الحد الذي يسمح Worker للمهمة أن تعمل قبله؛ عند تجاوزه يخرج Worker بخطأ. أما `retry_after` في connection فهو المدة التي بعدها يعتبر backend أن المهمة المحجوزة لم تُنهَ ويجعلها متاحة لمحاولة أخرى. يجب عادة أن يكون **timeout أقل من retry_after بهامش واضح**. مثل timeout=60 وretry_after=90. إذا كانا متساويين أو معكوسين، قد يأخذ Worker ثانٍ نفس Job بينما الأول لا يزال ينفذها.\n\nوأيضًا اضبط timeout داخل HTTP client نفسه؛ timeout العام للـJob لا يغني عن connect timeout وrequest timeout في الاتصال الخارجي."
+        },
+        {
+          "type": "code",
+          "lang": "php",
+          "code": "use Throwable;\n\npublic function failed(?Throwable $exception): void\n{\n    report($exception);\n    // أرسل تنبيهًا أو حدّث حالة يمكن للمستخدم رؤيتها.\n}\n\n// إدارة failed jobs من الطرفية:\n// php artisan queue:failed\n// php artisan queue:retry <id>\n// php artisan queue:retry all\n// php artisan queue:forget <id>\n// php artisan queue:prune-failed",
+          "caption": "التنظيف والمراقبة بعد الفشل النهائي"
+        },
+        {
+          "type": "note",
+          "md": "## نقطة خفية في failed()\n\nLaravel ينشئ instance جديدًا من الـJob قبل استدعاء `failed()`، لذلك التعديلات التي أجريتها على خصائص `$this` أثناء `handle()` ليست مضمونة هناك. خزّن progress المهم في قاعدة البيانات أو خدمة خارجية، ولا تعتمد على ذاكرة object.\n\nيمكنك استعمال `retryUntil()` عندما يكون الوقت أهم من العدد، مثل محاولة مزامنة لمدة عشر دقائق فقط. وإذا عرّفت `retryUntil` و`tries` معًا، يعطي Laravel 13 الأولوية لـ`retryUntil`."
+        },
+        {
+          "type": "mcq",
+          "id": "s4-q1",
+          "question": "Job تستعمل release(30) لأن API مزدحمة. هل release تستهلك attempt؟",
+          "options": [
+            "لا، release لا تؤثر أبدًا",
+            "نعم، لذلك يجب حساب Tries أو retryUntil بعناية",
+            "فقط مع sync driver",
+            "فقط إذا نجحت handle"
+          ],
+          "answer": 1,
+          "explain": "إعادة المهمة للطابور يدويًا تُحسب ضمن attempts، وكذلك بعض middleware التي تطلقها من جديد.",
+          "focus": "how"
+        },
+        {
+          "type": "mcq",
+          "id": "s4-q2",
+          "question": "ما الإعداد الأكثر أمانًا؟",
+          "options": [
+            "timeout=120 وretry_after=60",
+            "timeout=90 وretry_after=90",
+            "timeout=60 وretry_after=90",
+            "timeout=0 وretry_after=1 لكل jobs"
+          ],
+          "answer": 2,
+          "explain": "ينبغي أن ينهي timeout الـWorker قبل أن تصبح المهمة متاحة مجددًا، مع هامش يسمح بتسجيل الانتهاء ومنع التنفيذ المكرر المتزامن.",
+          "focus": "why"
+        },
+        {
+          "type": "mcq",
+          "id": "s4-q3",
+          "question": "أي خطأ يستحق retry غالبًا؟",
+          "options": [
+            "عنوان بريد بصيغة غير صالحة لن تتغير",
+            "HTTP 503 مؤقت من خدمة خارجية",
+            "order_id يشير إلى سجل محذوف نهائيًا",
+            "قانون business يمنع العملية"
+          ],
+          "answer": 1,
+          "explain": "503 غالبًا عطل مؤقت قد يختفي. الأخطاء الدائمة يجب أن تفشل بسرعة بدل استهلاك queue.",
+          "focus": "when"
+        },
+        {
+          "type": "mcq",
+          "id": "s4-q4",
+          "question": "إذا عرّفت retryUntil وTries معًا في Laravel 13، أيهما يحدد نافذة المحاولات؟",
+          "options": [
+            "Tries دائمًا",
+            "retryUntil له الأولوية",
+            "يتم جمع الرقمين",
+            "كلاهما يُتجاهل"
+          ],
+          "answer": 1,
+          "explain": "التوثيق الحالي يعطي retryUntil الأولوية عندما يوجد الاثنان.",
+          "focus": "what"
+        },
+        {
+          "type": "fill",
+          "id": "s4-f1",
+          "prompt": "أكمل Attribute الذي يحدد خمس محاولات في Laravel 13:",
+          "lang": "php",
+          "template": "#[____(5)]\nclass SyncShipment implements ShouldQueue {}",
+          "answer": "Tries",
+          "hints": [
+            "اسمها جمع try"
+          ],
+          "focus": "syntax"
+        },
+        {
+          "type": "fill",
+          "id": "s4-f2",
+          "prompt": "أكمل method التي تعيد Job للطابور بعد 30 ثانية:",
+          "lang": "php",
+          "template": "$this->____(30);",
+          "answer": "release",
+          "hints": [
+            "تُطلق حجز المهمة الحالي"
+          ],
+          "focus": "syntax"
+        },
+        {
+          "type": "flashcard",
+          "id": "s4-fc1",
+          "front": "ما الفرق بين Tries وMaxExceptions؟",
+          "back": "Tries يحد إجمالي attempts، بما فيها release وmiddleware وtimeouts. MaxExceptions يحد عدد exceptions غير المعالجة، فيسمح بمحاولات كثيرة بسبب release لكنه يفشل بعد عدد أصغر من exceptions.",
+          "focus": "what"
+        },
+        {
+          "type": "written",
+          "id": "s4-w1",
+          "question": "صمّم retry policy لـJob تتصل بخدمة شحن قد تعيد 429 أو 503 أو 422. اشرح المعاملة المختلفة.",
+          "model": "أعيد 429 حسب Retry-After أو backoff مناسب، وأعيد 503 مع exponential backoff وjitter وحد زمني. لا أعيد 422 إذا كانت البيانات غير صالحة؛ أفشل فورًا وأسجل السبب. أضبط HTTP timeouts أقل من Job timeout، وJob timeout أقل من retry_after، وأجعل العملية idempotent.",
+          "focus": "when"
+        }
+      ]
+    },
+    {
+      "id": "s5",
+      "title": "الصحة تحت التكرار: Idempotency وUniqueness وLocks",
+      "outline": [
+        "لماذا يجب افتراض تنفيذ Job أكثر من مرة",
+        "تصميم idempotent jobs",
+        "ShouldBeUnique مقابل WithoutOverlapping",
+        "Debounced jobs في Laravel 13",
+        "Database transactions وoutbox وحدود الضمان"
+      ],
+      "summary": "الأنظمة الواقعية قد تعيد تسليم الرسالة أو يموت Worker بعد الأثر الخارجي وقبل حذفها. لذلك الهدف ليس ادعاء exactly-once، بل جعل التكرار آمنًا واختيار lock المناسب للمشكلة الصحيحة.",
+      "blocks": [
+        {
+          "type": "note",
+          "md": "## افترض at-least-once\n\nقد ترسل Job بريدًا بنجاح، ثم يموت Worker قبل أن يؤكد حذفها من queue. ستُعاد لاحقًا وقد ترسل البريد مرتين. لهذا يجب أن تكون Job **idempotent**: إعادة تنفيذها بالمدخل نفسه لا تصنع أثرًا إضافيًا غير مرغوب.\n\nوسائل عملية: unique constraint في DB، سجل processed_events، مفتاح idempotency لدى payment provider، تحديث شرطي مثل `whereNull(processed_at)`, أو state machine لا تسمح بالانتقال نفسه مرتين. مجرد `if ($order->sent_at) return` يساعد، لكنه قد يعاني race condition إذا عمل نسختان بالتزامن."
+        },
+        {
+          "type": "diagram",
+          "engine": "mermaid",
+          "code": "sequenceDiagram\n  participant W as Worker\n  participant P as Payment API\n  participant Q as Queue\n  W->>P: Charge with idempotency key order-42\n  P-->>W: Success\n  Note over W: Worker crashes before ack\n  Q->>W: Deliver job again\n  W->>P: Same idempotency key order-42\n  P-->>W: Return original result, no second charge",
+          "caption": "مفتاح idempotency يحمي من الخصم المكرر بعد إعادة التسليم"
+        },
+        {
+          "type": "note",
+          "md": "## ثلاثة أدوات، ثلاث مشكلات\n\n- `ShouldBeUnique`: يمنع **dispatch** لنسخة أخرى تحمل unique key ما دامت الأولى مقفلة. افتراضيًا يبقى القفل حتى تنتهي أو تفشل نهائيًا. يحتاج cache يدعم atomic locks ومشتركًا بين servers.\n- `WithoutOverlapping`: middleware يمنع **التنفيذ المتزامن** لنفس key، لكنه لا يمنع وجود عدة jobs في queue. النسخة التي لا تحصل على lock تُعاد للطابور وقد تستهلك attempt.\n- `#[DebounceFor(30)]`: عند dispatch متكرر لنفس debounce ID خلال نافذة قصيرة، تُستبدل القديمة بحيث تنفذ **أحدث** نسخة. في Laravel 13 لا تجمعها مع unique job.\n\nاختصرها هكذا: Unique = اقبل الأولى، Debounce = احتفظ بالأخيرة، Overlap lock = اسمح بالتراكم لكن لا تنفذ معًا."
+        },
+        {
+          "type": "code",
+          "lang": "php",
+          "code": "use Illuminate\\Contracts\\Queue\\ShouldBeUnique;\nuse Illuminate\\Queue\\Attributes\\UniqueFor;\n\n#[UniqueFor(3600)]\nclass RebuildProductIndex implements ShouldQueue, ShouldBeUnique\n{\n    use Queueable;\n\n    public function __construct(public int $productId) {}\n\n    public function uniqueId(): string\n    {\n        return (string) $this->productId;\n    }\n}",
+          "caption": "منع dispatch مكرر للمنتج نفسه"
+        },
+        {
+          "type": "code",
+          "lang": "php",
+          "code": "use Illuminate\\Queue\\Middleware\\WithoutOverlapping;\n\npublic function middleware(): array\n{\n    return [\n        (new WithoutOverlapping(\"order:{$this->orderId}\"))\n            ->expireAfter(180),\n    ];\n}",
+          "caption": "منع تنفيذ متزامن لعدة Jobs تخص الطلب نفسه"
+        },
+        {
+          "type": "mcq",
+          "id": "s5-q1",
+          "question": "Job خصمت مبلغًا ثم مات Worker قبل ack. ما الحماية الأقوى عند retry؟",
+          "options": [
+            "زيادة timeout فقط",
+            "إرسال نفس idempotency key المرتبط بالعملية إلى بوابة الدفع",
+            "تغيير اسم queue في كل محاولة",
+            "إخفاء exception"
+          ],
+          "answer": 1,
+          "explain": "المفتاح يجعل provider يتعرف إلى إعادة الطلب ويعيد النتيجة الأصلية بدل خصم جديد.",
+          "focus": "why"
+        },
+        {
+          "type": "mcq",
+          "id": "s5-q2",
+          "question": "أي أداة تمنع نسختين موجودتين بالفعل في queue من التنفيذ بالتزامن على المورد نفسه؟",
+          "options": [
+            "ShouldBeEncrypted",
+            "WithoutOverlapping",
+            "dispatchSync",
+            "Queue::fake"
+          ],
+          "answer": 1,
+          "explain": "WithoutOverlapping تحصل على lock وقت المعالجة. ShouldBeUnique يعمل أساسًا وقت dispatch.",
+          "focus": "how"
+        },
+        {
+          "type": "mcq",
+          "id": "s5-q3",
+          "question": "المستخدم يكتب في محرر وكل ضغطة تطلب تحديث search index، ونريد تنفيذ أحدث حالة بعد هدوء 30 ثانية. الأنسب؟",
+          "options": [
+            "Job فريدة تقبل أول ضغطة وتتجاهل الباقي",
+            "Debounced Job تحتفظ بأحدث dispatch",
+            "dispatchSync لكل ضغطة",
+            "زيادة retries إلى 100"
+          ],
+          "answer": 1,
+          "explain": "Debounce مصممة للأحداث الكثيرة التي نريد منها النتيجة الأخيرة بعد نافذة هدوء.",
+          "focus": "when"
+        },
+        {
+          "type": "mcq",
+          "id": "s5-q4",
+          "question": "لماذا لا يكفي check بسيط لـprocessed_at دائمًا لمنع التكرار؟",
+          "options": [
+            "لأن Jobs لا تستطيع قراءة database",
+            "لأن عاملين قد يقرآن null في اللحظة نفسها قبل أن يكتب أحدهما",
+            "لأن processed_at لا يقبل timestamps",
+            "لأن Queue تحذف كل الأعمدة"
+          ],
+          "answer": 1,
+          "explain": "هذا race condition من check-then-act. عالجه بقيد فريد أو update ذري أو lock أو idempotency لدى النظام الخارجي.",
+          "focus": "why"
+        },
+        {
+          "type": "fill",
+          "id": "s5-f1",
+          "prompt": "أكمل contract الذي يمنع dispatch مكرر لنفس uniqueId:",
+          "lang": "php",
+          "template": "class RebuildIndex implements ShouldQueue, ____",
+          "answer": "ShouldBeUnique",
+          "hints": [
+            "يبدأ بـShouldBe"
+          ],
+          "focus": "syntax"
+        },
+        {
+          "type": "fill",
+          "id": "s5-f2",
+          "prompt": "أكمل middleware التي تمنع التنفيذ المتداخل:",
+          "lang": "php",
+          "template": "return [new ____($this->orderId)];",
+          "answer": "WithoutOverlapping",
+          "hints": [
+            "اسمها يعني بلا تداخل"
+          ],
+          "focus": "syntax"
+        },
+        {
+          "type": "flashcard",
+          "id": "s5-fc1",
+          "front": "لخّص Unique وDebounce وWithoutOverlapping في جملة لكل واحدة.",
+          "back": "Unique تمنع إدخال نسخة أخرى وتقبل الأولى؛ Debounce تستبدل dispatchات متقاربة وتحتفظ بالأحدث؛ WithoutOverlapping يسمح بوجود عدة jobs لكنه يمنع تشغيلها معًا للمفتاح نفسه.",
+          "focus": "what"
+        },
+        {
+          "type": "written",
+          "id": "s5-w1",
+          "question": "صمّم Job آمنة لمعالجة webhook قد يصل أكثر من مرة، وقد يصل حدثان للمستخدم نفسه بالتزامن.",
+          "model": "أستخدم event ID كقيد unique في جدول processed_webhooks داخل transaction، وأتجاهل event المسجل. أحمي تحديث المورد من التزامن بـlock أو update ذري/نسخة optimistic. أجعل النداءات الخارجية بمفاتيح idempotency، وأفصل حفظ الحدث عن المعالجة بنمط inbox/outbox عند الحاجة. Unique Job وحدها ليست ضمانًا دائمًا لأن lock قد ينتهي أو توجد مسارات dispatch مختلفة.",
+          "focus": "when"
+        }
+      ]
+    },
+    {
+      "id": "s6",
+      "title": "Chains وBatches والاختبارات والتشغيل الإنتاجي",
+      "outline": [
+        "التسلسل باستخدام Bus::chain",
+        "التوازي والتقدم باستخدام Bus::batch",
+        "اختبار dispatch واختبار منطق handle",
+        "فحص الفشل والأحداث والمراقبة",
+        "Checklist جاهزية الإنتاج"
+      ],
+      "summary": "نختم بتركيب Jobs في workflows أكبر، ثم نختبر مستويين مختلفين: هل أُرسلت المهمة الصحيحة؟ وهل منطقها يعمل؟ وأخيرًا نضع قائمة تشغيل تمنع أشهر مفاجآت الإنتاج.",
+      "blocks": [
+        {
+          "type": "note",
+          "md": "## Chain أم Batch؟\n\n`Bus::chain()` ينفذ jobs **بالترتيب**، ولا تبدأ التالية حتى تنجح السابقة. إذا فشلت واحدة تتوقف بقية السلسلة. استخدمه عندما تعتمد الخطوة B على نتيجة A، مثل: تحويل فيديو ثم استخراج thumbnail ثم نشره.\n\n`Bus::batch()` يجمع jobs يمكن تنفيذها بالتوازي مع tracking للتقدم وcallbacks مثل `then`, `catch`, و`finally` وإمكانية الإلغاء. يحتاج جدول batches؛ إن لم يكن موجودًا: `php artisan make:queue-batches-table` ثم migrate. Jobs داخل batch تستخدم trait `Batchable`. لا تستخدم `$this` داخل batch callbacks لأنها تُسلسل وتنفذ لاحقًا."
+        },
+        {
+          "type": "code",
+          "lang": "php",
+          "code": "use Illuminate\\Support\\Facades\\Bus;\n\nBus::chain([\n    new TranscodeVideo($videoId),\n    new GenerateThumbnail($videoId),\n    new PublishVideo($videoId),\n])->dispatch();\n\n$batch = Bus::batch([\n    new ImportChunk($path, 1),\n    new ImportChunk($path, 2),\n    new ImportChunk($path, 3),\n])->name('customers-import')->dispatch();",
+          "caption": "تسلسل مع chain وتجميع متوازٍ مع batch"
+        },
+        {
+          "type": "note",
+          "md": "## مستويان مختلفان للاختبار\n\n1. **اختبار orchestration:** هل الـController أرسل Job الصحيحة بالبيانات والqueue والchain المتوقع؟ استخدم `Queue::fake()` أو `Bus::fake()` ثم assertions. الـfake تمنع التنفيذ، لذلك هذا الاختبار لا يثبت صحة `handle()`.\n2. **اختبار سلوك Job:** أنشئ الـJob وشغّل `handle()` مع fake/mock للخدمة أو نفّذ integration test بقاعدة الاختبار. في Laravel 13 تستطيع `withFakeQueueInteractions()` لاختبار أنها عملت release/delete/fail دون التعامل مع queue حقيقية.\n\nلا تكتب اختبارًا واحدًا يحاول إثبات كل شيء؛ افصل قرار dispatch عن منطق التنفيذ وعن integration مع backend."
+        },
+        {
+          "type": "code",
+          "lang": "php",
+          "code": "use App\\Jobs\\SendOrderConfirmation;\nuse Illuminate\\Support\\Facades\\Queue;\n\nQueue::fake();\n\n$this->post(\"/orders/{$order->id}/confirm\");\n\nQueue::assertPushed(\n    SendOrderConfirmation::class,\n    fn (SendOrderConfirmation $job) => $job->order->is($order),\n);",
+          "caption": "اختبار أن endpoint أرسل Job الصحيحة"
+        },
+        {
+          "type": "note",
+          "md": "## Checklist قبل الإنتاج\n\n- اختر backend مناسبًا؛ Redis سريع ويدعمه Horizon، وSQS مُدار، وdatabase جيد للبدايات والأحمال الصغيرة.\n- شغّل Workers تحت Supervisor أو نظام إدارة مماثل.\n- اجعل deployment ينفذ `queue:restart`.\n- اضبط `timeout < retry_after` واضبط timeouts للخدمات الخارجية.\n- راقب queue depth، oldest job age، throughput، failures، ومدة التنفيذ.\n- صمّم idempotency وافصل الأخطاء المؤقتة عن الدائمة.\n- لا تمرر payloads ضخمة أو secrets بلا حاجة؛ استخدم `ShouldBeEncrypted` عندما تحتاج تشفير payload المدعوم.\n- اختبر بعد commit، retries، missing models، والتشغيل المتكرر.\n\nالمصدر المرجعي لهذه الدورة: [توثيق Laravel 13 Queues](https://laravel.com/docs/13.x/queues) و[Horizon](https://laravel.com/docs/13.x/horizon)."
+        },
+        {
+          "type": "mcq",
+          "id": "s6-q1",
+          "question": "لديك ثلاث خطوات تعتمد كل واحدة على نجاح السابقة. ما الأنسب؟",
+          "options": [
+            "Bus::batch دون قيود",
+            "Bus::chain",
+            "ثلاثة dispatchSync من المتصفح",
+            "Queue::fake"
+          ],
+          "answer": 1,
+          "explain": "Chain تضمن الترتيب وتتوقف السلسلة إذا فشلت خطوة، وهذا يطابق dependency المتسلسلة.",
+          "focus": "when"
+        },
+        {
+          "type": "mcq",
+          "id": "s6-q2",
+          "question": "تريد استيراد مليون صف على 100 chunk مع progress وإلغاء. ما الأنسب؟",
+          "options": [
+            "Job واحدة ضخمة بلا timeout",
+            "Bus::batch من Jobs صغيرة Batchable",
+            "Chain من 100 خطوة رغم عدم وجود اعتماد بينها",
+            "تنفيذها داخل HTTP request"
+          ],
+          "answer": 1,
+          "explain": "Batch تسمح بالتوازي وقياس التقدم والإلغاء ومعالجة النجاح والفشل على مستوى المجموعة.",
+          "focus": "why"
+        },
+        {
+          "type": "mcq",
+          "id": "s6-q3",
+          "question": "ماذا يثبت Queue::fake مع Queue::assertPushed؟",
+          "options": [
+            "أن handle نفذت واتصلت بالخدمة الخارجية",
+            "أن التطبيق حاول dispatch للـJob المطابقة للشروط دون تنفيذها",
+            "أن Supervisor سيعيد التشغيل",
+            "أن Redis لا يمكن أن يتعطل"
+          ],
+          "answer": 1,
+          "explain": "الـfake يعزل قرار dispatch. تحتاج اختبارًا منفصلًا لمنطق handle والتكاملات.",
+          "focus": "how"
+        },
+        {
+          "type": "mcq",
+          "id": "s6-q4",
+          "question": "أي metric تكشف أن jobs لا تفشل لكنها تنتظر وقتًا طويلًا؟",
+          "options": [
+            "عدد routes فقط",
+            "Oldest job age وqueue depth",
+            "حجم CSS bundle",
+            "عدد migrations"
+          ],
+          "answer": 1,
+          "explain": "قد تكون نسبة الفشل صفرًا مع وجود backlog ضخم. عمر أقدم Job وعمق queue يكشفان التأخر الفعلي.",
+          "focus": "what"
+        },
+        {
+          "type": "fill",
+          "id": "s6-f1",
+          "prompt": "أكمل facade method لإنشاء سلسلة مرتبة:",
+          "lang": "php",
+          "template": "Bus::____([$jobA, $jobB])->dispatch();",
+          "answer": "chain",
+          "hints": [
+            "تعني سلسلة"
+          ],
+          "focus": "syntax"
+        },
+        {
+          "type": "fill",
+          "id": "s6-f2",
+          "prompt": "أكمل facade method التي تمنع تنفيذ Jobs أثناء اختبار dispatch:",
+          "lang": "php",
+          "template": "Queue::____();",
+          "answer": "fake",
+          "hints": [
+            "تستبدل التنفيذ بمزدوج اختبار"
+          ],
+          "focus": "syntax"
+        },
+        {
+          "type": "flashcard",
+          "id": "s6-fc1",
+          "front": "ما الفرق الجوهري بين Chain وBatch؟",
+          "back": "Chain workflow متسلسل يعتمد لاحقه على سابقه ويتوقف عند الفشل. Batch مجموعة قابلة للتوازي مع progress/cancellation/callbacks، وقد تسمح باستمرار بقية jobs حسب سياسة الفشل.",
+          "focus": "what"
+        },
+        {
+          "type": "written",
+          "id": "s6-w1",
+          "question": "ضع خطة اختبار وتشغيل production لـJob ترسل فواتير إلى خدمة خارجية.",
+          "model": "أختبر أن إنشاء الطلب dispatch للـJob بعد commit، وأختبر handle بخدمة fake لحالات النجاح و429 و422 وtimeout، وأختبر idempotency عند التنفيذ مرتين. في الإنتاج أشغل Workers تحت process manager، أضبط timeout أقل من retry_after وHTTP timeouts، أستخدم backoff وحد محاولات، أعيد Workers عند النشر، وأراقب depth وoldest age والمدة والفشل مع تنبيه وإمكانية retry مدروسة.",
+          "focus": "when"
+        }
+      ]
+    }
+  ]
+}
